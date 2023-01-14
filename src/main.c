@@ -3,6 +3,8 @@
 #include "esp_log.h"
 
 #include "sniffer.h"
+#include "comm.h"
+#include "net.h"
 
 static const char* TAG = "main";
 
@@ -26,11 +28,15 @@ void packet_process_task() {
 
 void app_main() {
     //esp_log_level_set("*", ESP_LOG_INFO);
-	
-    // Sniffer init
+    ESP_ERROR_CHECK(nvs_flash_init());
+
+    // Communication init
+    comm_init();
+    net_init();
 	sniffer_init();
     
     // Task creation
     xTaskCreate(memory_task,         "memory",         2048, NULL, 5,  NULL);
-    xTaskCreate(packet_process_task, "packet_process", 2048, NULL, 10, NULL);
+    xTaskCreate(packet_process_task, "packet_process", 2048, NULL, 15, NULL);
+    xTaskCreate(comm_execute_task,   "comm_execute",   2048, NULL, 10, NULL);
 }

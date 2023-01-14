@@ -36,5 +36,4 @@ typedef struct {
 extern QueueHandle_t sniffer_captured_queue;
 
 void sniffer_init();
-void sniffer_set_channel(uint8_t channel);
 extern void sniffer_frame_callback();

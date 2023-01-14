@@ -35,17 +35,6 @@ void IRAM_ATTR sniffer_rx_callback(void* buf, wifi_promiscuous_pkt_type_t type) 
 }
 
 void sniffer_init() {
-    // Initialize wifi peripheral
-    ESP_LOGI(TAG, "Initializing WiFi");
-    ESP_ERROR_CHECK(nvs_flash_init());
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-
     // Setup promiscuous mode
     ESP_LOGI(TAG, "Turning on promiscuous mode");
     ESP_ERROR_CHECK(esp_wifi_set_promiscuous(true));
@@ -55,14 +44,5 @@ void sniffer_init() {
     wifi_promiscuous_filter_t filter = {.filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT};
     ESP_ERROR_CHECK(esp_wifi_set_promiscuous_filter(&filter));
 
-    // Start wifi
-    ESP_LOGI(TAG, "Starting WiFi peripheral");
-    ESP_ERROR_CHECK(esp_wifi_start());
-
     ESP_LOGI(TAG, "Init done");
-}
-
-void sniffer_set_channel(uint8_t channel) {
-    ESP_LOGI(TAG, "Set channel to %d", channel);
-    ESP_ERROR_CHECK(esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE));
 }
