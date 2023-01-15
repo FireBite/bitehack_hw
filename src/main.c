@@ -5,6 +5,7 @@
 #include "sniffer.h"
 #include "comm.h"
 #include "net.h"
+#include "motor.h"
 
 static const char* TAG = "main";
 
@@ -16,13 +17,23 @@ void memory_task() {
 }
 
 void packet_process_task() {
-    while (1) {
-        probe_req_data_t packet;
-        xQueueReceive(sniffer_captured_queue, &packet, portMAX_DELAY);
+    frame_t packet = {
+        .cmd = FRAME_CMD_SNIFFER
+    };
 
-        ESP_LOGI(TAG, "PROBE_REQUEST %02x:%02x:%02x:%02x:%02x:%02x", packet.source[0], packet.source[1], packet.source[2], packet.source[3], packet.source[4], packet.source[5]);
-        ESP_LOGI(TAG, "    RSSI %d", packet.rssi);
-        ESP_LOGI(TAG, "    NF   %d", packet.noise_floor);
+    packet.payload = malloc(128);
+
+    while(1) {
+        probe_req_data_t data;
+        xQueueReceive(sniffer_captured_queue, &data, portMAX_DELAY);
+
+        ESP_LOGI(TAG, "PROBE_REQUEST %02x:%02x:%02x:%02x:%02x:%02x", data.source[0], data.source[1], data.source[2], data.source[3], data.source[4], data.source[5]);
+        ESP_LOGI(TAG, "    RSSI %d", data.rssi);
+        ESP_LOGI(TAG, "    NF   %d", data.noise_floor);
+
+        packet.len = snprintf((char*)packet.payload, 127, ";1;%02x:%02x:%02x:%02x:%02x:%02x;%d;%d#", data.source[0], data.source[1], data.source[2], data.source[3], data.source[4], data.source[5], data.rssi, data.noise_floor);
+
+        comm_send_packet(packet);
     }
 }
 
@@ -34,8 +45,12 @@ void app_main() {
     comm_init();
     net_init();
 	sniffer_init();
+
+    // Motor init
+    motor_init();
     
     // Task creation
+    xTaskCreate(motor_pos_task,      "motor_pos",      2048, NULL, 9,  NULL);
     xTaskCreate(memory_task,         "memory",         2048, NULL, 5,  NULL);
     xTaskCreate(packet_process_task, "packet_process", 2048, NULL, 15, NULL);
     xTaskCreate(comm_execute_task,   "comm_execute",   2048, NULL, 10, NULL);

@@ -19,11 +19,20 @@
 
 #define COMM_WIFI_SSID    "BITEhack_2023"
 #define COMM_WIFI_PASSWD  "BITEhack2023"
-#define COMM_WIFI_CHANNEL 5
 
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
 
+#define NET_MAX_CLIENTS 3
+
+typedef struct {
+    httpd_handle_t hd;
+    int fd;
+    uint8_t* msg;
+    size_t len;
+} net_async_resp_arg;
+
 void net_init();
+void net_broadcast_ws_msg(uint8_t* buf, size_t len);
 static void net_wifi_init();
 static void net_server_init();

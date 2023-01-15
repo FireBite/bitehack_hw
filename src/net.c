@@ -2,6 +2,8 @@
 #include "comm.h"
 
 static const char* TAG = "net";
+
+static httpd_handle_t server = NULL;
 static EventGroupHandle_t s_wifi_event_group;
 static int s_retry_num = 0;
 
@@ -18,7 +20,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
         } else {
             xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
         }
-        ESP_LOGI(TAG,"connect to the AP fail");
+        ESP_LOGE(TAG,"Connect to the AP fail");
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
         ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
@@ -89,36 +91,7 @@ static void net_wifi_init() {
 // ---- Websocket ----
 // -------------------
 
-struct async_resp_arg {
-    httpd_handle_t hd;
-    int fd;
-};
-
-static void ws_async_send(void *arg)
-{
-    static const char * data = "Async data";
-    struct async_resp_arg *resp_arg = arg;
-    httpd_handle_t hd = resp_arg->hd;
-    int fd = resp_arg->fd;
-    httpd_ws_frame_t ws_pkt;
-    memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
-    ws_pkt.payload = (uint8_t*)data;
-    ws_pkt.len = strlen(data);
-    ws_pkt.type = HTTPD_WS_TYPE_TEXT;
-
-    httpd_ws_send_frame_async(hd, fd, &ws_pkt);
-    free(resp_arg);
-}
-
-static esp_err_t trigger_async_send(httpd_handle_t handle, httpd_req_t *req)
-{
-    struct async_resp_arg *resp_arg = malloc(sizeof(struct async_resp_arg));
-    resp_arg->hd = req->handle;
-    resp_arg->fd = httpd_req_to_sockfd(req);
-    return httpd_queue_work(handle, ws_async_send, resp_arg);
-}
-
-static esp_err_t echo_handler(httpd_req_t *req) {
+static esp_err_t ws_handler(httpd_req_t *req) {
     if (req->method == HTTP_GET) {
         ESP_LOGI(TAG, "Handshake done, the new connection was opened");
         return ESP_OK;
@@ -127,8 +100,7 @@ static esp_err_t echo_handler(httpd_req_t *req) {
     httpd_ws_frame_t ws_pkt;
     uint8_t *buf = NULL;
     memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
-    ws_pkt.type = HTTPD_WS_TYPE_TEXT;
-
+    
     /* Set max_len = 0 to get the frame len */
     esp_err_t ret = httpd_ws_recv_frame(req, &ws_pkt, 0);
     if (ret != ESP_OK) {
@@ -155,8 +127,7 @@ static esp_err_t echo_handler(httpd_req_t *req) {
             return ret;
         }
 
-        ESP_LOGE(TAG, "pacc");
-        comm_parse_packet(buf);
+        comm_parse_packet(buf, ws_pkt.len);
     }
 
     return ret;
@@ -165,24 +136,72 @@ static esp_err_t echo_handler(httpd_req_t *req) {
 static const httpd_uri_t ws = {
         .uri        = "/ws",
         .method     = HTTP_GET,
-        .handler    = echo_handler,
+        .handler    = ws_handler,
         .user_ctx   = NULL,
         .is_websocket = true
 };
 
+static void net_broadcast_ws_msg_queue_work(void *arg) {
+    net_async_resp_arg* resp_arg = (net_async_resp_arg*) arg;
+    httpd_ws_frame_t ws_pkt;
+
+    httpd_handle_t hd = resp_arg->hd;
+    int fd = resp_arg->fd;
+
+    memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
+    ws_pkt.payload = resp_arg->msg;
+    ws_pkt.len = resp_arg->len;
+    ws_pkt.type = HTTPD_WS_TYPE_TEXT;
+
+    httpd_ws_send_frame_async(hd, fd, &ws_pkt);
+
+    free(ws_pkt.payload);
+    free(resp_arg);
+}
+
+void net_broadcast_ws_msg(uint8_t* buf, size_t len) {
+    // Send async message to all connected clients that use websocket protocol every 10 seconds
+    size_t clients = NET_MAX_CLIENTS;
+    int    client_fds[NET_MAX_CLIENTS];
+
+    if (httpd_get_client_list(server, &clients, client_fds) == ESP_OK) {
+        for (size_t i=0; i < clients; ++i) {
+            int sock = client_fds[i];
+
+            if (httpd_ws_get_fd_info(server, sock) == HTTPD_WS_CLIENT_WEBSOCKET) {
+                ESP_LOGI(TAG, "Active client (fd=%d) -> sending async message", sock);
+                ESP_LOGI(TAG, "%s;%d", buf, len);
+
+                net_async_resp_arg* resp_arg = malloc(sizeof(net_async_resp_arg));
+                resp_arg->hd = server;
+                resp_arg->fd = sock;
+                resp_arg->len = len;
+
+                resp_arg->msg = malloc(len);
+                memcpy(resp_arg->msg, buf, len);
+
+                if (httpd_queue_work(resp_arg->hd, net_broadcast_ws_msg_queue_work, resp_arg) != ESP_OK)
+                    ESP_LOGE(TAG, "httpd_queue_work failed!");
+            }
+        }
+    } else {
+        ESP_LOGE(TAG, "httpd_get_client_list failed!");
+    }
+
+    free(buf);
+}
+
 static void net_server_init() {
-    httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    //config.max_open_sockets = NET_MAX_CLIENTS;
 
     // Start the httpd server
     ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
-    if (httpd_start(&server, &config) == ESP_OK) {
-        // Registering the ws handler
-        ESP_LOGI(TAG, "Registering URI handlers");
-        httpd_register_uri_handler(server, &ws);
-    }
-
-    ESP_LOGI(TAG, "Error starting server!");
+    ESP_ERROR_CHECK(httpd_start(&server, &config));
+    
+    // Registering the ws handler
+    ESP_LOGI(TAG, "Registering URI handlers");
+    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &ws));
 }
 
 void net_init() {

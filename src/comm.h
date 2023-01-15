@@ -16,9 +16,10 @@ typedef enum {
 typedef struct {
     frame_cmd_t cmd;
     uint8_t* payload;
+    size_t len;
 } frame_t;
 
 void comm_init();
 void comm_send_packet(frame_t packet);
-void comm_parse_packet(uint8_t* buf);
+void comm_parse_packet(uint8_t* buf, size_t len);
 void comm_execute_task();
