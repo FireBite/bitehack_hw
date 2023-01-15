@@ -1,6 +1,8 @@
 #include "motor.h"
 #include "comm.h"
 
+#define ABS(x) ((x) < 0 ? -(x) : (x))
+
 static const char* TAG = "motor";
 
 motor_t motor;
@@ -48,29 +50,6 @@ void motor_init() {
         };
         ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
     }
-
-    motor.enc_inst[0].gpioClk = MOTOR_ENC_CLK1;
-    motor.enc_inst[0].gpioDir = MOTOR_ENC_DIR1;
-    motor.enc_inst[1].gpioClk = MOTOR_ENC_CLK2;
-    motor.enc_inst[1].gpioDir = MOTOR_ENC_DIR2;
-
-    // Encoder interrupt init - clock
-    gpio_config_t gpio_conf = {
-        .mode = GPIO_MODE_INPUT,
-        .pin_bit_mask = (1ULL << MOTOR_ENC_CLK1) | (1ULL << MOTOR_ENC_CLK2),
-        .intr_type = GPIO_INTR_POSEDGE,
-    };
-    ESP_ERROR_CHECK(gpio_config(&gpio_conf));
-
-    ESP_ERROR_CHECK(gpio_install_isr_service(0));
-
-    ESP_ERROR_CHECK(gpio_isr_handler_add(MOTOR_ENC_CLK1, enc_isr_handler, (void*) MOTOR_ENC_CLK1));
-    ESP_ERROR_CHECK(gpio_isr_handler_add(MOTOR_ENC_CLK2, enc_isr_handler, (void*) MOTOR_ENC_CLK2));
-
-    // Encoder dir pins init
-    gpio_conf.intr_type = GPIO_INTR_DISABLE;
-    gpio_conf.pin_bit_mask = (1ULL << MOTOR_ENC_DIR1) | (1ULL << MOTOR_ENC_DIR2);
-    ESP_ERROR_CHECK(gpio_config(&gpio_conf));
 }
 
 static uint32_t motor_calculate_wheel_pwm(int8_t target) {
@@ -99,7 +78,7 @@ void motor_set_wheels(int8_t L, int8_t R) {
         ledc_set_duty(LEDC_HIGH_SPEED_MODE, MOTOR_BRIDGE_CH_1B, 0);
     } else if(L < 0) {
         ledc_set_duty(LEDC_HIGH_SPEED_MODE, MOTOR_BRIDGE_CH_1A, 0);
-        ledc_set_duty(LEDC_HIGH_SPEED_MODE, MOTOR_BRIDGE_CH_1B, motor_calculate_wheel_pwm(L));
+        ledc_set_duty(LEDC_HIGH_SPEED_MODE, MOTOR_BRIDGE_CH_1B, motor_calculate_wheel_pwm(ABS(L)));
     } else {
         ledc_set_duty(LEDC_HIGH_SPEED_MODE, MOTOR_BRIDGE_CH_1A, 0);
         ledc_set_duty(LEDC_HIGH_SPEED_MODE, MOTOR_BRIDGE_CH_1B, 0);
@@ -110,7 +89,7 @@ void motor_set_wheels(int8_t L, int8_t R) {
         ledc_set_duty(LEDC_HIGH_SPEED_MODE, MOTOR_BRIDGE_CH_2B, 0);
     } else if(R < 0) {
         ledc_set_duty(LEDC_HIGH_SPEED_MODE, MOTOR_BRIDGE_CH_2A, 0);
-        ledc_set_duty(LEDC_HIGH_SPEED_MODE, MOTOR_BRIDGE_CH_2B, motor_calculate_wheel_pwm(R));
+        ledc_set_duty(LEDC_HIGH_SPEED_MODE, MOTOR_BRIDGE_CH_2B, motor_calculate_wheel_pwm(ABS(R)));
     } else {
         ledc_set_duty(LEDC_HIGH_SPEED_MODE, MOTOR_BRIDGE_CH_2A, 0);
         ledc_set_duty(LEDC_HIGH_SPEED_MODE, MOTOR_BRIDGE_CH_2B, 0);

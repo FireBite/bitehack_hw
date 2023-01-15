@@ -59,7 +59,7 @@ void app_main() {
     motor_init();
     
     // Task creation
-    xTaskCreate(motor_pos_task,      "motor_pos",      2048, NULL, 9,  NULL);
+    //xTaskCreate(motor_pos_task,      "motor_pos",      2048, NULL, 9,  NULL);
     xTaskCreate(memory_task,         "memory",         2048, NULL, 5,  NULL);
     xTaskCreate(packet_process_task, "packet_process", 2048, NULL, 15, NULL);
     xTaskCreate(comm_execute_task,   "comm_execute",   2048, NULL, 10, NULL);
