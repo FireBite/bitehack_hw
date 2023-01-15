@@ -27,9 +27,9 @@ void packet_process_task() {
         probe_req_data_t data;
         xQueueReceive(sniffer_captured_queue, &data, portMAX_DELAY);
 
-        ESP_LOGI(TAG, "PROBE_REQUEST %02x:%02x:%02x:%02x:%02x:%02x", data.source[0], data.source[1], data.source[2], data.source[3], data.source[4], data.source[5]);
-        ESP_LOGI(TAG, "    RSSI %d", data.rssi);
-        ESP_LOGI(TAG, "    NF   %d", data.noise_floor);
+        //ESP_LOGI(TAG, "PROBE_REQUEST %02x:%02x:%02x:%02x:%02x:%02x", data.source[0], data.source[1], data.source[2], data.source[3], data.source[4], data.source[5]);
+        //ESP_LOGI(TAG, "    RSSI %d", data.rssi);
+        //ESP_LOGI(TAG, "    NF   %d", data.noise_floor);
 
         packet.len = snprintf((char*)packet.payload, 127, ";1;%02x:%02x:%02x:%02x:%02x:%02x;%d;%d#", data.source[0], data.source[1], data.source[2], data.source[3], data.source[4], data.source[5], data.rssi, data.noise_floor);
 
@@ -39,6 +39,15 @@ void packet_process_task() {
 
 void app_main() {
     //esp_log_level_set("*", ESP_LOG_INFO);
+
+    // Fix bootstrap GPIO
+    gpio_config_t gpio_conf = {
+        .pin_bit_mask = 1ULL << GPIO_NUM_14,
+        .mode = GPIO_MODE_OUTPUT
+    };
+    ESP_ERROR_CHECK(gpio_config(&gpio_conf));
+    gpio_set_level(GPIO_NUM_14, 0);
+
     ESP_ERROR_CHECK(nvs_flash_init());
 
     // Communication init
